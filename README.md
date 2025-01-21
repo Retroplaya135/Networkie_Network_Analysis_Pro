@@ -36,5 +36,28 @@ A versatile and powerful Python-based network analysis tool for performing ICMP/
 9. **Report Generation**:
    - Export results in JSON, CSV, or PDF format.
    - Create visual reports using matplotlib and networkx.
+  
+---
+
+## Installation
+
+1. Clone the repository:
+   ```bash
+   git clone 
+   cd network-analysis-tool
+   ```
+
+2. Install required dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+3. Ensure the tool is run with root privileges for certain features:
+   ```bash
+   sudo python network_analysis.py
+   ```
+---
+
+
 
 
