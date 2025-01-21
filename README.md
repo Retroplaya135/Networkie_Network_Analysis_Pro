@@ -82,7 +82,23 @@ Detect the operating system of a host:
 python network_analysis.py -t 192.168.1.1 --os-detect
 ```
 
+### 4. SNMP Query
+Fetch system information using SNMP:
+```bash
+python network_analysis.py -t 192.168.1.1 --snmp -c public
+```
 
+### 5. Scan Specific TCP and UDP Ports
+Check for open TCP and UDP ports:
+```bash
+python network_analysis.py -t 192.168.1.1 --tcp-ports 22 80 443 --udp-ports 53 123
+```
+
+### 6. Traceroute
+Trace the route to a target host:
+```bash
+python network_analysis.py -t 192.168.1.1 --max-hops 20
+```
 
 
 
