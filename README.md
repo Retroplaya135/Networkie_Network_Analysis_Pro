@@ -172,3 +172,14 @@ As part of a security audit, you need to:
 
 
 
+---
+
+## Requirements
+
+- Python 3.8+
+- Root privileges for certain features (e.g., traceroute, port scans).
+- Libraries:
+  - Required: `argparse`, `subprocess`, `socket`, `configparser`
+  - Optional: `pysnmp`, `paramiko`, `matplotlib`, `networkx`, `reportlab`
+
+---
