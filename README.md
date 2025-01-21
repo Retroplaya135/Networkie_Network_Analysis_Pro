@@ -70,5 +70,19 @@ python network_analysis.py -t 192.168.1.1
 ```
 
 
+### 2. Scan a Range of IPs
+Check multiple hosts for reachability:
+```bash
+python network_analysis.py -t 192.168.1.1-192.168.1.10
+```
+
+### 3. Perform OS Detection
+Detect the operating system of a host:
+```bash
+python network_analysis.py -t 192.168.1.1 --os-detect
+```
+
+
+
 
 
