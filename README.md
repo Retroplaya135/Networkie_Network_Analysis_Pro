@@ -150,4 +150,25 @@ python network_analysis.py -t 192.168.1.1 --json-out results.json --csv-out resu
 ---
 
 
+## Sample Scenarios
+
+### Scenario 1: Troubleshooting a Server Issue
+A server in your network is unreachable. Use the tool to:
+1. Ping the server to confirm reachability.
+2. Perform a traceroute to identify network issues.
+3. Check open ports to ensure services are running.
+
+### Scenario 2: Monitoring Multiple Devices
+You manage multiple devices in a network and want to:
+1. Ping all devices in a range to check for connectivity.
+2. Perform SNMP queries to fetch health data.
+3. Generate a PDF report for documentation.
+
+### Scenario 3: Conducting a Security Scan
+As part of a security audit, you need to:
+1. Scan TCP and UDP ports for open services.
+2. Test SSH connectivity with provided credentials.
+3. Save results in JSON format for further analysis.
+
+
 
