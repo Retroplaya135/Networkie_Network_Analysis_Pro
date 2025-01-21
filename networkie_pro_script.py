@@ -2,9 +2,9 @@
 # -*- coding: utf-8 -*-
 
 """
-Network Analysis Script
-Performs ping, traceroute, SNMP queries, port scans, and plotting
-Generates extensive data exports and optional reports
+Network Analysis Tool
+Performs ICMP/UDP/TCP checks, OS detection, SNMP queries, traceroutes
+Includes SSH connectivity, logging, scheduling, and concurrency
 """
 
 import argparse
@@ -18,6 +18,9 @@ import json
 import csv
 import threading
 import queue
+import logging
+import sched
+import configparser
 from datetime import datetime
 
 # Optional libraries
@@ -42,14 +45,79 @@ try:
 except ImportError:
     pass
 
+# OS detection (Scapy)
+try:
+    from scapy.all import sr1, IP, TCP
+except ImportError:
+    sr1 = None
+
+# SSH check
+try:
+    import paramiko
+except ImportError:
+    paramiko = None
+
 ###############################################################################
-# Utility functions
+# Logging setup
 ###############################################################################
 
+logger = logging.getLogger("netanalysis")
+logger.setLevel(logging.DEBUG)
+formatter = logging.Formatter(
+    fmt="%(asctime)s [%(levelname)s] %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
+)
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.INFO)
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
+
+###############################################################################
+# Configuration handling
+###############################################################################
+
+def load_config_file(path):
+    # Reads config from .ini file
+    config = configparser.ConfigParser()
+    if os.path.exists(path):
+        config.read(path)
+    return config
+
+###############################################################################
+# Utilities
+###############################################################################
+
+def ip_to_int(ip):
+    parts = ip.split(".")
+    return (int(parts[0]) << 24) + (int(parts[1]) << 16) + \
+           (int(parts[2]) << 8) + int(parts[3])
+
+def int_to_ip(num):
+    return ".".join([
+        str(num >> 24 & 255),
+        str(num >> 16 & 255),
+        str(num >> 8 & 255),
+        str(num & 255),
+    ])
+
+def parse_ip_range(ip_range):
+    # e.g. 192.168.1.1-192.168.1.5
+    pattern = r"(\d+\.\d+\.\d+\.\d+)-(\d+\.\d+\.\d+\.\d+)"
+    match = re.match(pattern, ip_range.strip())
+    if not match:
+        return [ip_range.strip()]
+    start_ip = match.group(1)
+    end_ip = match.group(2)
+    return expand_ip_range(start_ip, end_ip)
+
+def expand_ip_range(start_ip, end_ip):
+    start = ip_to_int(start_ip)
+    end = ip_to_int(end_ip)
+    return [int_to_ip(i) for i in range(start, end + 1)]
+
 def is_reachable(ip, count=1, timeout=2):
-    # Simple ping
+    # Ping
+    cmd = ["ping", "-c", str(count), "-W", str(timeout), ip]
     try:
-        cmd = ["ping", "-c", str(count), "-W", str(timeout), ip]
         output = subprocess.check_output(
             cmd, stderr=subprocess.STDOUT, universal_newlines=True
         )
@@ -60,30 +128,26 @@ def is_reachable(ip, count=1, timeout=2):
         return False
 
 def average_ping_time(ip, attempts=4):
-    # Measure average ping
+    # Ping average
     times = []
     for _ in range(attempts):
         start = time.time()
-        ok = is_reachable(ip, count=1, timeout=2)
-        end = time.time()
-        if ok:
-            delta = (end - start) * 1000
-            times.append(delta)
+        if is_reachable(ip, count=1, timeout=2):
+            times.append((time.time() - start)*1000)
         else:
             times.append(None)
-    valid = [t for t in times if t is not None]
+    valid = [x for x in times if x is not None]
     if not valid:
         return None
-    return sum(valid) / len(valid)
+    return sum(valid)/len(valid)
 
 def traceroute(ip, max_hops=30):
-    # Perform traceroute
+    # Trace
     res = []
+    cmd = ["traceroute", "-m", str(max_hops), ip]
     try:
-        cmd = ["traceroute", "-m", str(max_hops), ip]
         proc = subprocess.Popen(
-            cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-            universal_newlines=True
+            cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True
         )
         for line in proc.stdout:
             res.append(line.strip())
@@ -117,47 +181,15 @@ def get_snmp_data(ip, community="public", oid="1.3.6.1.2.1.1.1.0"):
         for varBind in varBinds:
             return f"{varBind}"
 
-def parse_ip_range(ip_range):
-    # Parse IP or range
-    # Example: 192.168.1.1-192.168.1.5
-    pattern = r"(\d+\.\d+\.\d+\.\d+)-(\d+\.\d+\.\d+\.\d+)"
-    match = re.match(pattern, ip_range.strip())
-    if not match:
-        return [ip_range.strip()]
-    start_ip = match.group(1)
-    end_ip = match.group(2)
-    return expand_ip_range(start_ip, end_ip)
-
-def expand_ip_range(start_ip, end_ip):
-    # Expand range into list
-    start = ip_to_int(start_ip)
-    end = ip_to_int(end_ip)
-    return [int_to_ip(i) for i in range(start, end + 1)]
-
-def ip_to_int(ip):
-    # IP -> int
-    parts = ip.split(".")
-    return (int(parts[0]) << 24) + (int(parts[1]) << 16) + \
-           (int(parts[2]) << 8) + int(parts[3])
-
-def int_to_ip(num):
-    # int -> IP
-    return ".".join([
-        str(num >> 24 & 255),
-        str(num >> 16 & 255),
-        str(num >> 8 & 255),
-        str(num & 255),
-    ])
-
 def resolve_hostname(ip):
-    # DNS lookup
+    # DNS
     try:
         return socket.gethostbyaddr(ip)[0]
     except:
         return None
 
-def check_ports(ip, ports=[22, 80, 443]):
-    # Basic TCP port scan
+def check_tcp_ports(ip, ports):
+    # TCP scan
     open_ports = []
     for port in ports:
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -170,47 +202,119 @@ def check_ports(ip, ports=[22, 80, 443]):
             pass
     return open_ports
 
+def check_udp_ports(ip, ports):
+    # UDP scan (basic)
+    open_ports = []
+    for port in ports:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.settimeout(1)
+        try:
+            s.sendto(b"", (ip, port))
+            s.recvfrom(1024)
+            open_ports.append(port)
+        except:
+            pass
+        finally:
+            s.close()
+    return open_ports
+
+def detect_os(ip):
+    # Very naive OS detection (TCP SYN -> typical port)
+    # Returns "Unknown" if scapy not installed
+    if sr1 is None:
+        return "Unknown"
+    try:
+        # Example: sending SYN to port 80
+        pkt = IP(dst=ip)/TCP(dport=80, flags="S")
+        response = sr1(pkt, timeout=1, verbose=0)
+        if not response:
+            return "Unknown"
+        # Inspect flags or window size for naive fingerprinting
+        window_size = response[TCP].window
+        if window_size == 64240:
+            return "Linux/Unix-like"
+        elif window_size == 8192:
+            return "Windows"
+        else:
+            return "Unknown"
+    except:
+        return "Unknown"
+
+def ssh_connect_test(ip, user, passwd, port=22):
+    # Basic SSH test
+    if not paramiko:
+        return False
+    try:
+        client = paramiko.SSHClient()
+        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        client.connect(ip, port=port, username=user, password=passwd, timeout=2)
+        client.close()
+        return True
+    except:
+        return False
+
 ###############################################################################
-# Concurrency wrappers
+# Concurrency - Thread worker
 ###############################################################################
 
-def worker_target(ip, community, max_hops, do_snmp, custom_ports):
-    # Thread worker
+def worker_target(
+    ip, community, max_hops, do_snmp, tcp_ports, udp_ports,
+    do_os_detect, ssh_creds
+):
     data = {}
-    reachable = is_reachable(ip)
     data["ip"] = ip
     data["hostname"] = resolve_hostname(ip)
-    data["reachable"] = reachable
-    if reachable:
+    data["reachable"] = is_reachable(ip)
+    data["os_guess"] = None
+    data["avg_ping_ms"] = None
+    data["traceroute"] = []
+    data["snmp_data"] = None
+    data["open_tcp_ports"] = []
+    data["open_udp_ports"] = []
+    data["ssh_accessible"] = None
+    if data["reachable"]:
         data["avg_ping_ms"] = average_ping_time(ip)
-        data["traceroute"] = traceroute(ip, max_hops=max_hops)
+        data["traceroute"] = traceroute(ip, max_hops)
         if do_snmp:
             data["snmp_data"] = get_snmp_data(ip, community)
-        else:
-            data["snmp_data"] = None
-        data["open_ports"] = check_ports(ip, custom_ports)
-    else:
-        data["avg_ping_ms"] = None
-        data["traceroute"] = []
-        data["snmp_data"] = None
-        data["open_ports"] = []
+        if tcp_ports:
+            data["open_tcp_ports"] = check_tcp_ports(ip, tcp_ports)
+        if udp_ports:
+            data["open_udp_ports"] = check_udp_ports(ip, udp_ports)
+        if do_os_detect:
+            data["os_guess"] = detect_os(ip)
+        if ssh_creds:
+            user, passwd = ssh_creds
+            data["ssh_accessible"] = ssh_connect_test(ip, user, passwd, port=22)
     return data
 
+###############################################################################
+# Concurrency - Thread pool
+###############################################################################
+
 def run_analysis_concurrent(
-    targets, community, max_hops, do_snmp, custom_ports, threads
+    targets, community, max_hops, do_snmp,
+    tcp_ports, udp_ports, do_os_detect,
+    ssh_creds, threads
 ):
-    # Thread pool
     from concurrent.futures import ThreadPoolExecutor
     results = []
     with ThreadPoolExecutor(max_workers=threads) as executor:
-        futures = []
+        future_map = []
         for ip in targets:
-            futures.append(
-                executor.submit(
-                    worker_target, ip, community, max_hops, do_snmp, custom_ports
-                )
+            future = executor.submit(
+                worker_target,
+                ip,
+                community,
+                max_hops,
+                do_snmp,
+                tcp_ports,
+                udp_ports,
+                do_os_detect,
+                ssh_creds
             )
-        for f in futures:
+            future_map.append(future)
+        for f in future_map:
             results.append(f.result())
     return results
 
@@ -219,7 +323,6 @@ def run_analysis_concurrent(
 ###############################################################################
 
 def create_ping_plot(results, out_file="ping_times.png"):
-    # Plot ping times
     if not plt:
         return
     valids = [r for r in results if r["reachable"]]
@@ -236,7 +339,6 @@ def create_ping_plot(results, out_file="ping_times.png"):
     plt.close()
 
 def create_topology_graph(results, out_file="topology.png"):
-    # Simple topology
     if not nx:
         return
     G = nx.Graph()
@@ -246,13 +348,16 @@ def create_topology_graph(results, out_file="topology.png"):
             parts = line.split()
             if len(parts) >= 2:
                 hop_ip = parts[1]
-                if hop_ip != "*" and re.match(r"(\d+\.){3}\d+", hop_ip):
+                # check if it's an IP
+                if re.match(r"(\d+\.){3}\d+", hop_ip):
                     G.add_node(hop_ip)
                     G.add_edge(r["ip"], hop_ip)
     plt.figure(figsize=(10, 7))
-    layout = nx.spring_layout(G, k=0.5)
-    node_colors = ["lightgreen" if G.nodes[n].get("reachable") else "lightgray"
-                   for n in G.nodes()]
+    layout = nx.spring_layout(G, k=0.7)
+    node_colors = [
+        "lightgreen" if G.nodes[n].get("reachable", False) else "lightgray"
+        for n in G.nodes()
+    ]
     nx.draw_networkx(
         G, layout, node_size=600, node_color=node_colors, font_size=8
     )
@@ -267,12 +372,11 @@ def create_topology_graph(results, out_file="topology.png"):
 ###############################################################################
 
 def generate_pdf_report(results, filename="network_report.pdf"):
-    # Simple PDF report
     try:
         from reportlab.lib.pagesizes import A4
         from reportlab.pdfgen import canvas
     except ImportError:
-        print("reportlab not installed.")
+        logger.info("reportlab not installed, skipping PDF report.")
         return
     c = canvas.Canvas(filename, pagesize=A4)
     width, height = A4
@@ -283,7 +387,8 @@ def generate_pdf_report(results, filename="network_report.pdf"):
     for r in results:
         line = (
             f"IP: {r['ip']}, Host: {r['hostname']}, Reachable: {r['reachable']}, "
-            f"AvgPing: {r['avg_ping_ms']}, Ports: {r['open_ports']}"
+            f"OS: {r['os_guess']}, Ports: TCP {r['open_tcp_ports']} UDP {r['open_udp_ports']}, "
+            f"SSH: {r['ssh_accessible']}"
         )
         text_obj.textLine(line)
         text_obj.moveCursor(0, 10)
@@ -292,19 +397,18 @@ def generate_pdf_report(results, filename="network_report.pdf"):
     c.save()
 
 ###############################################################################
-# Data export
+# Exporters
 ###############################################################################
 
 def export_json(results, filename):
-    # Save as JSON
     with open(filename, "w") as f:
         json.dump(results, f, indent=2)
 
 def export_csv(results, filename):
-    # Save as CSV
     headers = [
-        "ip", "hostname", "reachable",
-        "avg_ping_ms", "snmp_data", "open_ports"
+        "ip", "hostname", "reachable", "os_guess",
+        "avg_ping_ms", "snmp_data", "open_tcp_ports",
+        "open_udp_ports", "ssh_accessible"
     ]
     with open(filename, "w", newline='') as f:
         writer = csv.DictWriter(f, fieldnames=headers)
@@ -314,24 +418,45 @@ def export_csv(results, filename):
                 "ip": r["ip"],
                 "hostname": r["hostname"],
                 "reachable": r["reachable"],
+                "os_guess": r["os_guess"],
                 "avg_ping_ms": r["avg_ping_ms"],
                 "snmp_data": r["snmp_data"],
-                "open_ports": r["open_ports"]
+                "open_tcp_ports": r["open_tcp_ports"],
+                "open_udp_ports": r["open_udp_ports"],
+                "ssh_accessible": r["ssh_accessible"]
             }
             writer.writerow(row)
 
 ###############################################################################
-# Main logic
+# Main analysis logic
 ###############################################################################
 
 def run_network_analysis(
-    targets, community="public", max_hops=30, do_snmp=False,
-    do_plot=False, custom_ports=None, threads=5
+    targets,
+    community="public",
+    max_hops=30,
+    do_snmp=False,
+    do_plot=False,
+    tcp_ports=None,
+    udp_ports=None,
+    do_os_detect=False,
+    ssh_creds=None,
+    threads=5
 ):
-    if not custom_ports:
-        custom_ports = [22, 80, 443]
+    if not tcp_ports:
+        tcp_ports = [22, 80, 443]
+    if not udp_ports:
+        udp_ports = [53, 123]
     results = run_analysis_concurrent(
-        targets, community, max_hops, do_snmp, custom_ports, threads
+        targets=targets,
+        community=community,
+        max_hops=max_hops,
+        do_snmp=do_snmp,
+        tcp_ports=tcp_ports,
+        udp_ports=udp_ports,
+        do_os_detect=do_os_detect,
+        ssh_creds=ssh_creds,
+        threads=threads
     )
     if do_plot:
         create_ping_plot(results)
@@ -339,92 +464,150 @@ def run_network_analysis(
     return results
 
 ###############################################################################
+# Scheduling
+###############################################################################
+
+def schedule_scan(interval, targets, args):
+    # Schedules repeated scans
+    s = sched.scheduler(time.time, time.sleep)
+    def scan_job():
+        logger.info("Scheduled scan triggered.")
+        res = run_network_analysis(
+            targets,
+            community=args.community,
+            max_hops=args.max_hops,
+            do_snmp=args.snmp,
+            do_plot=args.plot,
+            tcp_ports=args.tcp_ports,
+            udp_ports=args.udp_ports,
+            do_os_detect=args.os_detect,
+            ssh_creds=args.ssh_creds,
+            threads=args.threads
+        )
+        if args.json_out:
+            export_json(res, args.json_out)
+        if args.csv_out:
+            export_csv(res, args.csv_out)
+        if args.pdf_report:
+            generate_pdf_report(res, args.pdf_report)
+        s.enter(interval, 1, scan_job, ())
+    # Schedule first run
+    s.enter(interval, 1, scan_job, ())
+    s.run()
+
+###############################################################################
 # CLI
 ###############################################################################
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Comprehensive network analysis with multi-threading"
+        description="Extensive network analysis, scanning, OS detection, concurrency"
     )
     parser.add_argument(
-        "-t", "--targets", nargs="+", required=True,
-        help="Target IPs or ranges (e.g. 192.168.0.1 or 192.168.0.1-192.168.0.10)"
+        "-t", "--targets", nargs="+", required=False,
+        help="IPs or ranges (e.g. 192.168.1.1-192.168.1.10)"
+    )
+    parser.add_argument(
+        "--config", default=None,
+        help="Optional config file (INI)"
     )
     parser.add_argument(
         "-c", "--community", default="public",
-        help="SNMP community string"
+        help="SNMP community"
     )
     parser.add_argument(
         "-m", "--max-hops", type=int, default=30,
-        help="Maximum hops for traceroute"
+        help="Traceroute max hops"
+    )
+    parser.add_argument("--snmp", action="store_true", help="SNMP data")
+    parser.add_argument("--plot", action="store_true", help="Generate plots")
+    parser.add_argument("--os-detect", action="store_true", help="OS detection")
+    parser.add_argument("--threads", type=int, default=5, help="Thread pool size")
+    parser.add_argument(
+        "--tcp-ports", nargs="*", type=int,
+        help="TCP ports to scan (space separated)"
     )
     parser.add_argument(
-        "--snmp", action="store_true",
-        help="Enable SNMP data collection"
+        "--udp-ports", nargs="*", type=int,
+        help="UDP ports to scan"
     )
     parser.add_argument(
-        "--ports", nargs="*", type=int,
-        default=None,
-        help="Ports to scan (space-separated)"
+        "--ssh-creds", nargs=2, metavar=("USER", "PASS"),
+        help="SSH user pass for connectivity test"
     )
+    parser.add_argument("--json-out", default=None, help="Export to JSON")
+    parser.add_argument("--csv-out", default=None, help="Export to CSV")
+    parser.add_argument("--pdf-report", default=None, help="PDF report")
     parser.add_argument(
-        "--threads", type=int, default=5,
-        help="Number of worker threads"
+        "--schedule-interval", type=int, default=None,
+        help="Run periodically every X seconds"
     )
-    parser.add_argument(
-        "--plot", action="store_true",
-        help="Create ping time and topology plots"
-    )
-    parser.add_argument(
-        "--json-out", default=None,
-        help="Export results to JSON"
-    )
-    parser.add_argument(
-        "--csv-out", default=None,
-        help="Export results to CSV"
-    )
-    parser.add_argument(
-        "--pdf-report", default=None,
-        help="Generate PDF report"
-    )
+
     args = parser.parse_args()
 
+    # If config file provided
+    config = None
+    if args.config:
+        config = load_config_file(args.config)
+        if config and "SCAN" in config:
+            # Example usage from config
+            if not args.targets and "targets" in config["SCAN"]:
+                args.targets = config["SCAN"]["targets"].split()
+            if args.tcp_ports is None and "tcp_ports" in config["SCAN"]:
+                args.tcp_ports = list(map(int, config["SCAN"]["tcp_ports"].split()))
+            if args.udp_ports is None and "udp_ports" in config["SCAN"]:
+                args.udp_ports = list(map(int, config["SCAN"]["udp_ports"].split()))
+            if not args.ssh_creds and "ssh_user" in config["SCAN"] and "ssh_pass" in config["SCAN"]:
+                args.ssh_creds = (config["SCAN"]["ssh_user"], config["SCAN"]["ssh_pass"])
+
+    if not args.targets:
+        logger.error("No targets specified.")
+        sys.exit(1)
+
+    # Expand IP ranges
     expanded_targets = []
     for item in args.targets:
         expanded_targets.extend(parse_ip_range(item))
     expanded_targets = list(set(expanded_targets))
     expanded_targets.sort(key=lambda x: ip_to_int(x))
 
-    results = run_network_analysis(
-        expanded_targets,
-        community=args.community,
-        max_hops=args.max_hops,
-        do_snmp=args.snmp,
-        do_plot=args.plot,
-        custom_ports=args.ports,
-        threads=args.threads
-    )
+    # Run scheduling or direct
+    if args.schedule_interval:
+        logger.info("Scheduling mode active.")
+        schedule_scan(args.schedule_interval, expanded_targets, args)
+    else:
+        results = run_network_analysis(
+            targets=expanded_targets,
+            community=args.community,
+            max_hops=args.max_hops,
+            do_snmp=args.snmp,
+            do_plot=args.plot,
+            tcp_ports=args.tcp_ports,
+            udp_ports=args.udp_ports,
+            do_os_detect=args.os_detect,
+            ssh_creds=args.ssh_creds,
+            threads=args.threads
+        )
+        if args.json_out:
+            export_json(results, args.json_out)
+        if args.csv_out:
+            export_csv(results, args.csv_out)
+        if args.pdf_report:
+            generate_pdf_report(results, args.pdf_report)
 
-    if args.json_out:
-        export_json(results, args.json_out)
-
-    if args.csv_out:
-        export_csv(results, args.csv_out)
-
-    if args.pdf_report:
-        generate_pdf_report(results, args.pdf_report)
-
-    for r in results:
-        if r["reachable"]:
-            info = f"{r['ip']} (Host: {r['hostname']}), avg ping: "
-            info += f"{r['avg_ping_ms']:.2f} ms" if r["avg_ping_ms"] else "N/A"
-            info += f", open ports: {r['open_ports']}"
-            print(info)
-        else:
-            print(f"{r['ip']} unreachable")
+        for r in results:
+            if r["reachable"]:
+                info = (
+                    f"{r['ip']} (Host: {r['hostname']}), OS: {r['os_guess']}, "
+                    f"Ping: {('%.2f' % r['avg_ping_ms']) if r['avg_ping_ms'] else 'N/A'}, "
+                    f"TCP: {r['open_tcp_ports']}, UDP: {r['open_udp_ports']}, "
+                    f"SSH: {r['ssh_accessible']}"
+                )
+                print(info)
+            else:
+                print(f"{r['ip']} unreachable")
 
 if __name__ == "__main__":
     if os.geteuid() != 0:
-        print("Warning: Some features may require root privileges.")
+        logger.warning("Some operations may require root privileges.")
     main()
-
