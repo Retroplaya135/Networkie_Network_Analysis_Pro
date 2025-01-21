@@ -100,5 +100,30 @@ Trace the route to a target host:
 python network_analysis.py -t 192.168.1.1 --max-hops 20
 ```
 
+### 7. Test SSH Connectivity
+Check if SSH access is available with the given credentials:
+```bash
+python network_analysis.py -t 192.168.1.1 --ssh-creds username password
+```
+
+### 8. Generate a PDF Report
+Save results in a PDF file:
+```bash
+python network_analysis.py -t 192.168.1.1-192.168.1.10 --pdf-report network_report.pdf
+```
+
+### 9. Automate Scans with Scheduling
+Run scans every 60 seconds:
+```bash
+python network_analysis.py -t 192.168.1.1 --schedule-interval 60
+```
+
+### 10. Export Results to JSON or CSV
+Save results for further analysis:
+```bash
+python network_analysis.py -t 192.168.1.1 --json-out results.json --csv-out results.csv
+```
+
+
 
 
