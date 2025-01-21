@@ -183,3 +183,11 @@ As part of a security audit, you need to:
   - Optional: `pysnmp`, `paramiko`, `matplotlib`, `networkx`, `reportlab`
 
 ---
+
+
+## Contributing
+
+We welcome contributions! Feel free to fork the repository, create a new branch, and submit a pull request.
+
+---
+
