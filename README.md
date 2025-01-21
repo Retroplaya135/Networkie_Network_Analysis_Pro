@@ -124,6 +124,29 @@ Save results for further analysis:
 python network_analysis.py -t 192.168.1.1 --json-out results.json --csv-out results.csv
 ```
 
+---
 
+## Use Cases
+
+### **Network Diagnostics**
+- Quickly identify unreachable hosts in a network.
+- Trace packet routes to troubleshoot connectivity issues.
+
+### **Security Audits**
+- Detect open TCP and UDP ports to identify potential vulnerabilities.
+- Test SSH connectivity to ensure secure access.
+
+### **Infrastructure Monitoring**
+- Perform regular pings and SNMP queries to monitor device health.
+- Use scheduled scans to automate checks.
+
+### **OS and Device Identification**
+- Use OS detection to identify the type of devices in your network.
+
+### **Visual Analysis**
+- Generate topology graphs to visualize your network.
+- Export ping times to understand latency across devices.
+
+---
 
 
