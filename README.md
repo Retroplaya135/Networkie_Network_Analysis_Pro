@@ -59,5 +59,16 @@ A versatile and powerful Python-based network analysis tool for performing ICMP/
 ---
 
 
+---
+
+## Usage Examples
+
+### 1. Basic ICMP Ping
+Test if a host is reachable:
+```bash
+python network_analysis.py -t 192.168.1.1
+```
+
+
 
 
