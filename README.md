@@ -187,7 +187,7 @@ As part of a security audit, you need to:
 
 ## Contributing
 
-We welcome contributions! Feel free to fork the repository, create a new branch, and submit a pull request.
+Contributions are welcome! Feel free to fork the repository, create a new branch, and submit a pull request.
 
 ---
 
