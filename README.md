@@ -13,7 +13,7 @@ A versatile and powerful Python-based network analysis tool for performing ICMP/
    - Scan for open TCP and UDP ports.
 
 2. **OS Detection**:
-   - Guess the operating system of a target using TCP SYN fingerprinting (requires Scapy).
+   - Guess the operating system of a target using TCP SYN fingerprinting (requires Scapy). For installing Scapy docs at https://scapy.net
 
 3. **SNMP Queries**:
    - Fetch SNMP data for additional insights (requires `pysnmp`). See docs at https://pypi.org/project/pysnmp/
