@@ -22,7 +22,7 @@ A versatile and powerful Python-based network analysis tool for performing ICMP/
    - Trace the route packets take to a target host.
 
 5. **SSH Connectivity Test**:
-   - Test SSH access using provided credentials (requires `paramiko`).
+   - Test SSH access using provided credentials (requires `paramiko`). See docs at https://www.paramiko.org.
 
 6. **Logging**:
    - Detailed logging of operations for debugging and analysis.
