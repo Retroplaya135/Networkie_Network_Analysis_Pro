@@ -28,7 +28,7 @@ A versatile and powerful Python-based network analysis tool for performing ICMP/
    - Detailed logging of operations for debugging and analysis.
 
 7. **Scheduling**:
-   - Automate scans at regular intervals.
+   - Automate scans at regular intervals. Replace or use along with Cron jobs if required.
 
 8. **Concurrency**:
    - Perform tasks efficiently with multithreading.
