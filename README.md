@@ -35,7 +35,7 @@ A versatile and powerful Python-based network analysis tool for performing ICMP/
 
 9. **Report Generation**:
    - Export results in JSON, CSV, or PDF format.
-   - Create visual reports using matplotlib and networkx.
+   - Create visual reports using matplotlib and networkx. May require additional setup to display the visualisations. 
   
 ---
 
