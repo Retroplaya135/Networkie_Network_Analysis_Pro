@@ -16,7 +16,7 @@ A versatile and powerful Python-based network analysis tool for performing ICMP/
    - Guess the operating system of a target using TCP SYN fingerprinting (requires Scapy). For installing Scapy docs at https://scapy.net
 
 3. **SNMP Queries**:
-   - Fetch SNMP data for additional insights (requires `pysnmp`). See docs at https://pypi.org/project/pysnmp/
+   - Fetch SNMP data for additional insights (requires `pysnmp`). For installing pysnmp see docs at https://pypi.org/project/pysnmp/
 
 4. **Traceroute**:
    - Trace the route packets take to a target host.
